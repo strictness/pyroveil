@@ -10,6 +10,8 @@ git clone https://github.com/HansKristian-Work/pyroveil.git
 cd pyroveil
 git submodule update --init
 cmake . -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.local
+# Alterate path if using Steam flatpak (I haven't verified this myself)
+#cmake . -Bbuild -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=$HOME/.var/app/com.valvesoftware.Steam/.local
 ninja -C build install
 ```
 
