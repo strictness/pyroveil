@@ -747,6 +747,35 @@ static VKAPI_ATTR VkResult VKAPI_CALL EnumerateDeviceExtensionProperties(
 	return vr;
 }
 
+static void adjustProps2(VkPhysicalDeviceProperties2 *pProperties)
+{
+	// Override the module identifier algorithm to make sure we get the chance to replace shaders.
+	auto *ident = findChainMutable<VkPhysicalDeviceShaderModuleIdentifierPropertiesEXT>(
+			pProperties->pNext, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_MODULE_IDENTIFIER_PROPERTIES_EXT);
+
+	if (ident)
+	{
+		for (auto &v : ident->shaderModuleIdentifierAlgorithmUUID)
+			v ^= 0xaa;
+	}
+}
+
+static VKAPI_ATTR void VKAPI_CALL GetPhysicalDeviceProperties2(
+		VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties2 *pProperties)
+{
+	auto *layer = getInstanceLayer(physicalDevice);
+	layer->getTable()->GetPhysicalDeviceProperties2(physicalDevice, pProperties);
+	adjustProps2(pProperties);
+}
+
+static VKAPI_ATTR void VKAPI_CALL GetPhysicalDeviceProperties2KHR(
+		VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties2 *pProperties)
+{
+	auto *layer = getInstanceLayer(physicalDevice);
+	layer->getTable()->GetPhysicalDeviceProperties2KHR(physicalDevice, pProperties);
+	adjustProps2(pProperties);
+}
+
 static PFN_vkVoidFunction interceptCoreInstanceCommand(const char *pName)
 {
 	static const struct
@@ -760,6 +789,8 @@ static PFN_vkVoidFunction interceptCoreInstanceCommand(const char *pName)
 		{ "vkGetInstanceProcAddr", reinterpret_cast<PFN_vkVoidFunction>(VK_LAYER_PYROVEIL_vkGetInstanceProcAddr) },
 		{ "vkCreateDevice", reinterpret_cast<PFN_vkVoidFunction>(CreateDevice) },
 		{ "vkEnumerateDeviceExtensionProperties", reinterpret_cast<PFN_vkVoidFunction>(EnumerateDeviceExtensionProperties) },
+		{ "vkGetPhysicalDeviceProperties2", reinterpret_cast<PFN_vkVoidFunction>(GetPhysicalDeviceProperties2) },
+		{ "vkGetPhysicalDeviceProperties2KHR", reinterpret_cast<PFN_vkVoidFunction>(GetPhysicalDeviceProperties2KHR) },
 	};
 
 	for (auto &cmd : coreInstanceCommands)

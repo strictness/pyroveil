@@ -43,6 +43,8 @@ struct VkLayerInstanceDispatchTable
 	PFN_vkDestroyInstance DestroyInstance;
 	PFN_vkCreateDevice CreateDevice;
 	PFN_vkEnumerateDeviceExtensionProperties EnumerateDeviceExtensionProperties;
+	PFN_vkGetPhysicalDeviceProperties2 GetPhysicalDeviceProperties2;
+	PFN_vkGetPhysicalDeviceProperties2KHR GetPhysicalDeviceProperties2KHR;
 };
 
 // Device function pointer dispatch table
@@ -115,6 +117,21 @@ static inline const T *findChain(const void *pNext, VkStructureType sType)
 		auto *s = static_cast<const VkBaseInStructure *>(pNext);
 		if (s->sType == sType)
 			return static_cast<const T *>(pNext);
+
+		pNext = s->pNext;
+	}
+
+	return nullptr;
+}
+
+template <typename T>
+static inline T *findChainMutable(void *pNext, VkStructureType sType)
+{
+	while (pNext)
+	{
+		auto *s = static_cast<const VkBaseOutStructure *>(pNext);
+		if (s->sType == sType)
+			return static_cast<T *>(pNext);
 
 		pNext = s->pNext;
 	}

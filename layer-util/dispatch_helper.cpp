@@ -44,6 +44,8 @@ void layerInitInstanceDispatchTable(VkInstance instance, VkLayerInstanceDispatch
 	F(DestroyInstance);
 	F(EnumerateDeviceExtensionProperties);
 	F(CreateDevice);
+	F(GetPhysicalDeviceProperties2);
+	F(GetPhysicalDeviceProperties2KHR);
 #undef F
 }
 
