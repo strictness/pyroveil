@@ -1,0 +1,7 @@
+{
+	"version": 1,
+	"type": "pyroveil",
+	"matches": [
+		{ "spirvExecutionModel": 5365, "action": { "glsl-roundtrip": true } }
+	]
+}
