@@ -16,7 +16,7 @@ ninja -C build install
 ## To use
 
 The layer needs a config file to operate. See the folders under `hacks/` for some ready to go config files.
-Place a `pyroveil.json` config next to the game's binary, or use `PYROVEIL_CONFIG=/path/to/pyroveil.json`.
+Use `PYROVEIL_CONFIG=/path/to/pyroveil.json` to pick the config you want.
 In Steam, run the game with `PYROVEIL=1 %command%`.
 
 To know that it's active, run `grep "pyroveil:" ~/steam-$appid.txt` on the PROTON_LOG output. You should see, e.g.:
