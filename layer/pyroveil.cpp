@@ -611,11 +611,12 @@ bool Device::overrideShader(VkShaderModuleCreateInfo &createInfo,
 		return false;
 	}
 
-	auto spirv = compileToSpirv(glsl, model, spirvVersion);
+	if (!instance->roundtripCachePath.empty())
+		placeOverrideShaderInCache(action.hash, createInfo, "orig", VkShaderStageFlagBits(0));
+
+	auto spirv = compileToSpirv(generateCachePath(instance->roundtripCachePath, action.hash, entry, stage), glsl, model, spirvVersion);
 	if (!spirv.empty())
 	{
-		if (!instance->roundtripCachePath.empty())
-			placeOverrideShaderInCache(action.hash, createInfo, "orig", VkShaderStageFlagBits(0));
 		createInfo.pCode = alloc.copy(spirv.data(), spirv.size());
 		createInfo.codeSize = spirv.size() * sizeof(uint32_t);
 		if (!instance->roundtripCachePath.empty())
