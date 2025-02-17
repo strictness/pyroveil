@@ -5,6 +5,8 @@ This can create SPIR-V that is more compatible with NVIDIA drivers in particular
 
 ## Checkout and build
 
+Make sure to install `git`, `cmake`, `ninja` and gcc toolchains first (often called `base-devel` or similar).
+
 ```
 git clone https://github.com/HansKristian-Work/pyroveil.git
 cd pyroveil
@@ -25,7 +27,7 @@ The layer needs a config file to operate. See the folders under `hacks/` for som
 Use `PYROVEIL_CONFIG=/path/to/pyroveil.json` to pick the config you want.
 In Steam, run the game with `PYROVEIL=1 %command%`.
 
-To know that it's active, run `grep "pyroveil:" ~/steam-$appid.txt` on the PROTON_LOG output. You should see, e.g.:
+To know that it's active, run `grep "pyroveil:" ~/steam-$appid.txt` on the `PROTON_LOG` output. You should see, e.g.:
 
 ```
 pyroveil: Found config in /tmp/pyroveil.json!
