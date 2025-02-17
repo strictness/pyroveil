@@ -14,6 +14,8 @@
 #include <string>
 #include <algorithm>
 #include <vector>
+#include <mutex>
+#include <unordered_set>
 #include <stdlib.h>
 
 extern "C"
@@ -82,12 +84,6 @@ struct Action
 struct Instance
 {
 	void init(VkInstance instance_, const VkApplicationInfo *pApplicationInfo, PFN_vkGetInstanceProcAddr gpa_);
-	Action checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, bool knowsEntryPoint,
-	                           spv::ExecutionModel *model, uint32_t *spirvVersion) const;
-	bool overrideShader(VkShaderModuleCreateInfo &createInfo,
-	                    const char *pName, VkShaderStageFlagBits stage,
-	                    ScratchAllocator &alloc) const;
-	void overrideStage(VkPipelineShaderStageCreateInfo *stageInfo, ScratchAllocator &alloc) const;
 
 	const VkLayerInstanceDispatchTable *getTable() const
 	{
@@ -317,8 +313,48 @@ static Hash computeHashShaderModule(const VkShaderModuleCreateInfo &createInfo)
 	return h.get();
 }
 
-Action Instance::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, bool knowsEntryPoint,
-                                     spv::ExecutionModel *model, uint32_t *spirvVersion) const
+struct Device
+{
+	void init(VkPhysicalDevice gpu_, VkDevice device_, Instance *instance_, PFN_vkGetDeviceProcAddr gpa);
+
+	const VkLayerDispatchTable *getTable() const
+	{
+		return &table;
+	}
+
+	VkDevice getDevice() const
+	{
+		return device;
+	}
+
+	VkPhysicalDevice getPhysicalDevice() const
+	{
+		return gpu;
+	}
+
+	Instance *getInstance() const
+	{
+		return instance;
+	}
+
+	Action checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, bool knowsEntryPoint,
+	                           spv::ExecutionModel *model, uint32_t *spirvVersion) const;
+	bool overrideShader(VkShaderModuleCreateInfo &createInfo,
+	                    const char *pName, VkShaderStageFlagBits stage,
+	                    ScratchAllocator &alloc) const;
+	void overrideStage(VkPipelineShaderStageCreateInfo *stageInfo, ScratchAllocator &alloc) const;
+
+	VkPhysicalDevice gpu = VK_NULL_HANDLE;
+	VkDevice device = VK_NULL_HANDLE;
+	Instance *instance = nullptr;
+	VkLayerDispatchTable table = {};
+
+	mutable std::mutex lock;
+	std::unordered_set<VkShaderModule> overriddenModules;
+};
+
+Action Device::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, bool knowsEntryPoint,
+                                   spv::ExecutionModel *model, uint32_t *spirvVersion) const
 {
 	uint32_t codeSize = createInfo.codeSize / sizeof(uint32_t);
 	const auto *data = createInfo.pCode;
@@ -328,7 +364,7 @@ Action Instance::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo,
 	Action action;
 	Hash hash = computeHashShaderModule(createInfo);
 
-	for (auto &match : globalMatches)
+	for (auto &match : instance->globalMatches)
 	{
 		if (match.fossilizeModuleHash && match.fossilizeModuleHash == hash)
 		{
@@ -357,7 +393,7 @@ Action Instance::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo,
 		else if (op == spv::OpString && count > 1)
 		{
 			auto str = extractString(data + offset + 1, count - 1);
-			for (auto &match : globalMatches)
+			for (auto &match : instance->globalMatches)
 			{
 				if (!match.opStringSearch.empty() && str.find(match.opStringSearch) != std::string::npos)
 				{
@@ -371,7 +407,7 @@ Action Instance::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo,
 		{
 			numEntryPoints++;
 			*model = static_cast<spv::ExecutionModel>(data[offset + 1]);
-			for (auto &match : globalMatches)
+			for (auto &match : instance->globalMatches)
 			{
 				if (*model == match.spirvExecutionModel)
 				{
@@ -392,9 +428,9 @@ Action Instance::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo,
 	return action;
 }
 
-bool Instance::overrideShader(VkShaderModuleCreateInfo &createInfo,
-                              const char *entry, VkShaderStageFlagBits stage,
-                              ScratchAllocator &alloc) const
+bool Device::overrideShader(VkShaderModuleCreateInfo &createInfo,
+                            const char *entry, VkShaderStageFlagBits stage,
+                            ScratchAllocator &alloc) const
 {
 	auto model = spv::ExecutionModelMax;
 	uint32_t spirvVersion = 0;
@@ -463,7 +499,7 @@ bool Instance::overrideShader(VkShaderModuleCreateInfo &createInfo,
 	}
 }
 
-void Instance::overrideStage(VkPipelineShaderStageCreateInfo *stageInfo, ScratchAllocator &alloc) const
+void Device::overrideStage(VkPipelineShaderStageCreateInfo *stageInfo, ScratchAllocator &alloc) const
 {
 	auto *moduleCreateInfo = findChain<VkShaderModuleCreateInfo>(stageInfo->pNext, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
 	if (moduleCreateInfo && moduleCreateInfo->codeSize)
@@ -479,43 +515,20 @@ void Instance::overrideStage(VkPipelineShaderStageCreateInfo *stageInfo, Scratch
 			}
 
 			stageInfo->pNext = pnext;
+			stageInfo->pName = "main";
 			moduleCreateInfo = findChain<VkShaderModuleCreateInfo>(pnext, VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO);
 			auto &mut = const_cast<VkShaderModuleCreateInfo &>(*moduleCreateInfo);
 			mut.pCode = replaced.pCode;
 			mut.codeSize = replaced.codeSize;
 		}
 	}
+	else if (stageInfo->module)
+	{
+		std::lock_guard<std::mutex> holder{lock};
+		if (overriddenModules.count(stageInfo->module))
+			stageInfo->pName = "main";
+	}
 }
-
-struct Device
-{
-	void init(VkPhysicalDevice gpu_, VkDevice device_, Instance *instance_, PFN_vkGetDeviceProcAddr gpa);
-
-	const VkLayerDispatchTable *getTable() const
-	{
-		return &table;
-	}
-
-	VkDevice getDevice() const
-	{
-		return device;
-	}
-
-	VkPhysicalDevice getPhysicalDevice() const
-	{
-		return gpu;
-	}
-
-	Instance *getInstance() const
-	{
-		return instance;
-	}
-
-	VkPhysicalDevice gpu = VK_NULL_HANDLE;
-	VkDevice device = VK_NULL_HANDLE;
-	Instance *instance = nullptr;
-	VkLayerDispatchTable table = {};
-};
 
 #include "dispatch_wrapper.hpp"
 
@@ -613,7 +626,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL CreateGraphicsPipelines(
 	{
 		createInfos[i].pStages = scratch.copy(createInfos[i].pStages, createInfos[i].stageCount);
 		for (uint32_t j = 0; j < createInfos[i].stageCount; j++)
-			layer->getInstance()->overrideStage(const_cast<VkPipelineShaderStageCreateInfo *>(&createInfos[i].pStages[j]), scratch);
+			layer->overrideStage(const_cast<VkPipelineShaderStageCreateInfo *>(&createInfos[i].pStages[j]), scratch);
 	}
 
 	return layer->getTable()->CreateGraphicsPipelines(device, pipelineCache,
@@ -635,7 +648,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL CreateComputePipelines(
 	auto *createInfos = scratch.copy(pCreateInfos, createInfoCount);
 
 	for (uint32_t i = 0; i < createInfoCount; i++)
-		layer->getInstance()->overrideStage(&createInfos[i].stage, scratch);
+		layer->overrideStage(&createInfos[i].stage, scratch);
 
 	return layer->getTable()->CreateComputePipelines(device, pipelineCache,
 	                                                 createInfoCount, createInfos, pAllocator,
@@ -660,7 +673,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL CreateRayTracingPipelinesKHR(
 	{
 		createInfos[i].pStages = scratch.copy(createInfos[i].pStages, createInfos[i].stageCount);
 		for (uint32_t j = 0; j < createInfos[i].stageCount; j++)
-			layer->getInstance()->overrideStage(const_cast<VkPipelineShaderStageCreateInfo *>(&createInfos[i].pStages[j]), scratch);
+			layer->overrideStage(const_cast<VkPipelineShaderStageCreateInfo *>(&createInfos[i].pStages[j]), scratch);
 	}
 
 	return layer->getTable()->CreateRayTracingPipelinesKHR(device, deferredOperation, pipelineCache,
@@ -677,10 +690,37 @@ static VKAPI_ATTR VkResult VKAPI_CALL CreateShaderModule(
 	auto *layer = getDeviceLayer(device);
 
 	ScratchAllocator scratch;
+	bool overrides = false;
 	auto tmpCreateInfo = *pCreateInfo;
-	layer->getInstance()->overrideShader(tmpCreateInfo, nullptr, VK_SHADER_STAGE_ALL, scratch);
+	if (layer->overrideShader(tmpCreateInfo, nullptr, VK_SHADER_STAGE_ALL, scratch))
+		overrides = true;
 
-	return layer->getTable()->CreateShaderModule(device, &tmpCreateInfo, pAllocator, pShaderModule);
+	VkResult vr = layer->getTable()->CreateShaderModule(device, &tmpCreateInfo, pAllocator, pShaderModule);
+	if (vr != VK_SUCCESS)
+		return vr;
+
+	if (overrides)
+	{
+		std::lock_guard<std::mutex> holder{layer->lock};
+		layer->overriddenModules.insert(*pShaderModule);
+	}
+
+	return vr;
+}
+
+static VKAPI_ATTR void VKAPI_CALL DestroyShaderModule(
+		VkDevice device,
+		VkShaderModule shaderModule,
+		const VkAllocationCallbacks *pAllocator)
+{
+	auto *layer = getDeviceLayer(device);
+
+	{
+		std::lock_guard<std::mutex> holder{layer->lock};
+		layer->overriddenModules.erase(shaderModule);
+	}
+
+	layer->getTable()->DestroyShaderModule(device, shaderModule, pAllocator);
 }
 
 static VKAPI_ATTR VkResult VKAPI_CALL CreateShadersEXT(
@@ -701,10 +741,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL CreateShadersEXT(
 			shaders[i].codeSize, static_cast<const uint32_t *>(shaders[i].pCode),
 		};
 
-		if (layer->getInstance()->overrideShader(info, shaders[i].pName, shaders[i].stage, scratch))
+		if (layer->overrideShader(info, shaders[i].pName, shaders[i].stage, scratch))
 		{
 			shaders[i].pCode = info.pCode;
 			shaders[i].codeSize = info.codeSize;
+			shaders[i].pName = "main";
 		}
 	}
 
@@ -810,6 +851,7 @@ static PFN_vkVoidFunction interceptDeviceCommand(const char *pName)
 		{ "vkGetDeviceProcAddr", reinterpret_cast<PFN_vkVoidFunction>(VK_LAYER_PYROVEIL_vkGetDeviceProcAddr) },
 		{ "vkDestroyDevice", reinterpret_cast<PFN_vkVoidFunction>(DestroyDevice) },
 		{ "vkCreateShaderModule", reinterpret_cast<PFN_vkVoidFunction>(CreateShaderModule) },
+		{ "vkDestroyShaderModule", reinterpret_cast<PFN_vkVoidFunction>(DestroyShaderModule) },
 		{ "vkCreateShadersEXT", reinterpret_cast<PFN_vkVoidFunction>(CreateShadersEXT) },
 		{ "vkCreateGraphicsPipelines", reinterpret_cast<PFN_vkVoidFunction>(CreateGraphicsPipelines) },
 		{ "vkCreateComputePipelines", reinterpret_cast<PFN_vkVoidFunction>(CreateComputePipelines) },
