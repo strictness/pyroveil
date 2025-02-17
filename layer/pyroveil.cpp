@@ -483,8 +483,11 @@ static std::string generateCachePath(const std::string &cachePath, Hash hash, co
 	{
 		path += ".";
 		path += pName;
-		path += ".";
-		path += std::to_string(stage);
+		if (stage != 0)
+		{
+			path += ".";
+			path += std::to_string(stage);
+		}
 	}
 
 	path += ".spv";
@@ -611,6 +614,8 @@ bool Device::overrideShader(VkShaderModuleCreateInfo &createInfo,
 	auto spirv = compileToSpirv(glsl, model, spirvVersion);
 	if (!spirv.empty())
 	{
+		if (!instance->roundtripCachePath.empty())
+			placeOverrideShaderInCache(action.hash, createInfo, "orig", VkShaderStageFlagBits(0));
 		createInfo.pCode = alloc.copy(spirv.data(), spirv.size());
 		createInfo.codeSize = spirv.size() * sizeof(uint32_t);
 		if (!instance->roundtripCachePath.empty())
