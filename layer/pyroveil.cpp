@@ -112,6 +112,8 @@ struct Instance
 	struct Match
 	{
 		Hash fossilizeModuleHash = 0;
+		Hash fossilizeModuleHashLo = 0;
+		Hash fossilizeModuleHashHi = 0;
 		std::string opStringSearch;
 		spv::ExecutionModel spirvExecutionModel = spv::ExecutionModelMax;
 		Action action;
@@ -153,6 +155,19 @@ void Instance::parseConfig(const rapidjson::Document &doc)
 			{
 				m.fossilizeModuleHash = strtoull(v.GetString(), nullptr, 16);
 				fprintf(stderr, "pyroveil: Adding match for fossilizeModuleHash: %016llx.\n", static_cast<unsigned long long>(m.fossilizeModuleHash));
+			}
+		}
+
+		if (match.HasMember("fossilizeModuleHashRange"))
+		{
+			auto &v = match["fossilizeModuleHashRange"];
+			if (v.IsArray() && v.Size() == 2 && v[0].IsString() && v[1].IsString())
+			{
+				m.fossilizeModuleHashLo = strtoull(v[0].GetString(), nullptr, 16);
+				m.fossilizeModuleHashHi = strtoull(v[1].GetString(), nullptr, 16);
+				fprintf(stderr, "pyroveil: Adding match for fossilizeModuleHash range [%016llx, %016llx].\n",
+				        static_cast<unsigned long long>(m.fossilizeModuleHashLo),
+				        static_cast<unsigned long long>(m.fossilizeModuleHashHi));
 			}
 		}
 
@@ -370,6 +385,15 @@ Action Device::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, b
 		{
 			action.glslRoundtrip = action.glslRoundtrip || match.action.glslRoundtrip;
 			fprintf(stderr, "pyroveil: Found match for fossilizeModuleHash: %016llx.\n",
+			        static_cast<unsigned long long>(hash));
+		}
+
+		if ((match.fossilizeModuleHashLo || match.fossilizeModuleHashHi) &&
+		    hash >= match.fossilizeModuleHashLo &&
+		    hash <= match.fossilizeModuleHashHi)
+		{
+			action.glslRoundtrip = action.glslRoundtrip || match.action.glslRoundtrip;
+			fprintf(stderr, "pyroveil: Found ranged match for fossilizeModuleHash: %016llx.\n",
 			        static_cast<unsigned long long>(hash));
 		}
 	}
