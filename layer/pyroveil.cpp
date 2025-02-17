@@ -435,9 +435,9 @@ Action Device::checkOverrideShader(const VkShaderModuleCreateInfo &createInfo, b
 			// We're now declaring code, so just stop parsing, there cannot be any capability ops after this.
 			break;
 		}
-		else if (op == spv::OpString && count > 1)
+		else if (op == spv::OpString && count > 2)
 		{
-			auto str = extractString(data + offset + 1, count - 1);
+			auto str = extractString(data + offset + 2, count - 2);
 			for (auto &match : instance->globalMatches)
 			{
 				if (!match.opStringSearch.empty() && str.find(match.opStringSearch) != std::string::npos)
