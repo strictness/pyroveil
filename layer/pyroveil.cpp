@@ -575,6 +575,9 @@ bool Device::overrideShader(VkShaderModuleCreateInfo &createInfo,
 
 	std::string glsl;
 
+	if (!instance->roundtripCachePath.empty())
+		placeOverrideShaderInCache(action.hash, createInfo, "orig", VkShaderStageFlagBits(0));
+
 	try
 	{
 		spirv_cross::CompilerGLSL compiler(createInfo.pCode, createInfo.codeSize / sizeof(uint32_t));
@@ -615,12 +618,9 @@ bool Device::overrideShader(VkShaderModuleCreateInfo &createInfo,
 	}
 	catch (const std::exception &e)
 	{
-		fprintf(stderr, "pyroveil: SPIRV-Cross threw error %s.\n", e.what());
+		fprintf(stderr, "pyroveil: SPIRV-Cross threw error: %s.\n", e.what());
 		return false;
 	}
-
-	if (!instance->roundtripCachePath.empty())
-		placeOverrideShaderInCache(action.hash, createInfo, "orig", VkShaderStageFlagBits(0));
 
 	auto spirv = compileToSpirv(generateCachePath(instance->roundtripCachePath, action.hash, entry, stage), glsl, model, spirvVersion);
 	if (!spirv.empty())
