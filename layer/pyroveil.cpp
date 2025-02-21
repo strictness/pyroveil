@@ -8,6 +8,7 @@
 #include "rapidjson/document.h"
 
 #include "dispatch_helper.hpp"
+#include "path_utils.hpp"
 #include "fossilize_hasher.hpp"
 #include "compiler.hpp"
 #include "spirv_glsl.hpp"
@@ -129,6 +130,7 @@ struct Instance
 	std::vector<Match> globalMatches;
 	std::vector<std::string> disabledExtensions;
 	std::string roundtripCachePath;
+	std::string configPath;
 };
 
 void Instance::parseConfig(const rapidjson::Document &doc)
@@ -225,7 +227,10 @@ void Instance::parseConfig(const rapidjson::Document &doc)
 	{
 		auto &v = doc["roundtripCache"];
 		if (v.IsString())
-			roundtripCachePath = v.GetString();
+		{
+			roundtripCachePath = Path::relpath(configPath, v.GetString());
+			fprintf(stderr, "pyroveil: Configured roundtripCachePath to \"%s\".\n", roundtripCachePath.c_str());
+		}
 	}
 }
 
@@ -252,6 +257,8 @@ void Instance::init(VkInstance instance_, const VkApplicationInfo *pApplicationI
 
 	if (file)
 	{
+		configPath = env;
+
 		fprintf(stderr, "pyroveil: Found config in %s!\n", env);
 		fseek(file.get(), 0, SEEK_END);
 		size_t len = ftell(file.get());
