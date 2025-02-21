@@ -127,12 +127,13 @@ struct Instance
 		Action action;
 	};
 	std::vector<Match> globalMatches;
+	std::vector<std::string> disabledExtensions;
 	std::string roundtripCachePath;
 };
 
 void Instance::parseConfig(const rapidjson::Document &doc)
 {
-	if (!doc.HasMember("version") || !doc["version"].IsInt() || doc["version"].GetUint() != 1)
+	if (!doc.HasMember("version") || !doc["version"].IsInt() || doc["version"].GetUint() != 2)
 	{
 		fprintf(stderr, "pyroveil: Unexpected version.\n");
 		return;
@@ -146,6 +147,13 @@ void Instance::parseConfig(const rapidjson::Document &doc)
 
 	if (!doc.HasMember("matches"))
 		return;
+
+	if (doc.HasMember("disabledExtensions"))
+	{
+		auto &exts = doc["disabledExtensions"];
+		for (auto itr = exts.Begin(); itr != exts.End(); ++itr)
+			disabledExtensions.emplace_back(itr->GetString());
+	}
 
 	active = true;
 
@@ -899,8 +907,18 @@ static VKAPI_ATTR VkResult VKAPI_CALL EnumerateDeviceExtensionProperties(
 		return vr;
 
 	// Filter out extensions we cannot deal with yet in SPIRV-Cross.
-	auto itr = std::remove_if(props.begin(), props.end(), [](const VkExtensionProperties &ext) {
-		return strcmp(ext.extensionName, VK_NV_RAW_ACCESS_CHAINS_EXTENSION_NAME) == 0;
+	auto itr = std::remove_if(props.begin(), props.end(), [layer, pProperties](const VkExtensionProperties &ext) {
+		for (auto &disabledExt : layer->disabledExtensions)
+		{
+			if (disabledExt == ext.extensionName)
+			{
+				// Only log once.
+				if (pProperties)
+					fprintf(stderr, "pyroveil: Disabling extension %s.\n", ext.extensionName);
+				return true;
+			}
+		}
+		return false;
 	});
 	props.erase(itr, props.end());
 
