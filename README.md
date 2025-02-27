@@ -37,3 +37,9 @@ pyroveil: Adding GLSL roundtrip via SPIRV-Cross for match.
 pyroveil: Found match for execution model in 55736cd1c3064f67.
 ...
 ```
+
+Some config files use a roundtripCache to provide patched SPIR-V.
+In this case, `cache/` folder next to pyroveil.json must also be copied.
+It is likely easier to simply use the path that you checked out for the `pyroveil.json`. E.g.
+
+`PYROVEIL=1 PYROVEIL_CONFIG=/path/to/pyroveil/checkout/hacks/monster-hunter-wilds-nv/pyroveil.json`
